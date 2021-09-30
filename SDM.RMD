@@ -1,0 +1,641 @@
+---
+title: "Species distribution modeling"
+author: "Tim Richter"
+date: "25 8 2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Species distribution modeling of Phylloscopus trochilus (willow warbler) in Europe under current and future climate conditions.
+
+```{r}
+rm(list=ls())
+
+library(raster)
+```
+
+# ABUNDANCE DATA PRE-PROCESSING#
+
+```{r}
+abundancepath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Abundance_data/"
+
+abund <- read.csv2(paste0(abundancepath, "willow_warbler_2020_Europe_latlong.csv"), header=T, sep=";")
+
+abund$MONTH <- substr((abund$OBSERVATION.DATE), 4, 5)
+
+ww <- abund[abund$MONTH == "06"| abund$MONTH == "05",]
+```
+## Checking for errors/NAs
+```{r}
+lonzero <- subset(ww, ww$LONGITUDE==0)
+latzero <- subset(ww, ww$LATITUDE==0)
+# --> no errors(NAs)
+```
+## Checking for exact duplicates
+```{r}
+dups <- duplicated(ww) # logical string e.g. [FALSE FALSE FALSE TRUE FALSE TRUE...]
+wwdups <- ww[dups, ]
+# --> no duplicates
+```
+## Checking for same coordinate data
+```{r}
+dups2 <- duplicated(wwdups[, c("LATITUDE", "LONGITUDE")])
+wwnd <- ww[!dups2,] # Subsample with no coordinate duplicates
+```
+## Saving as .csv
+```{r}
+setwd(abundancepath)
+write.csv2(ww, file="willow_warbler_2020_Europe_prep_and_clean.csv", row.names=TRUE)
+```
+
+# Reprojection #
+```{r}
+rm(list=ls())
+
+library(raster)
+library(dismo)
+library(sf)
+library(sp)
+library(mapview)
+
+predfinpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors_finished/"
+abundancepath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Abundance_data/"
+```
+## PROJECT OCCURRENCE COORDINATES
+```{r}
+ww <- read.csv2(paste0(abundancepath, "willow_warbler_2020_Europe_prep_and_clean.csv"), header=T, sep=";")
+
+currentclim <- raster::stack(paste0(predfinpath, "currentclim.grd"))
+
+coordinates(ww)=~LONGITUDE+LATITUDE
+proj4string(ww) <- crs("+init=epsg:4326")
+wwETRS <- spTransform(ww, crs(currentclim))
+```
+## ADD PROJECTED LONGITUDE LATITUDE COLUMNS
+```{r}
+wwlonlat <- data.frame(wwETRS)
+```
+## CREATE SUBSET WITH ONLY LONGITUDE AND LATITUDE COLUMNS
+```{r}
+wwsdm <- subset(wwlonlat, select=c("LONGITUDE", "LATITUDE"))
+```
+## SAVE DATAFRAME
+```{r}
+setwd(abundancepath)
+
+saveRDS(wwsdm, "wwfin.RDS")
+```
+
+# PREDICTORS PRE-PROCESSING #
+```{r}
+library(mapview)
+library(stringr)
+```
+## Worldclim monthly averages from 2010-2018
+```{r}
+preclist <- list.files("E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/WorldClim/Current_climate/wc2.1_2.5m_prec_2010-2018/", pattern="*.tif$")
+tminlist <- list.files("E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/WorldClim/Current_climate/wc2.1_2.5m_tmin_2010-2018/", pattern="*.tif$")
+tmaxlist <- list.files("E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/WorldClim/Current_climate/wc2.1_2.5m_tmax_2010-2018/", pattern="*.tif$")
+
+prec <- raster::stack(paste0("E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/WorldClim/Current_climate/wc2.1_2.5m_prec_2010-2018/", preclist))
+tmin <- raster::stack(paste0("E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/WorldClim/Current_climate/wc2.1_2.5m_tmin_2010-2018/", tminlist))
+tmax <- raster::stack(paste0("E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/WorldClim/Current_climate/wc2.1_2.5m_tmax_2010-2018/", tmaxlist))
+```
+## Calculating means for every month
+
+## PRECIPITATION
+
+## Creating subsets for each month 
+```{r}
+prec01 <- raster::subset(prec, grep(".01", names(prec), fixed=TRUE, value=T))
+prec02 <- raster::subset(prec, grep(".02", names(prec), fixed=TRUE, value=T))
+prec03 <- raster::subset(prec, grep(".03", names(prec), fixed=TRUE, value=T))
+prec04 <- raster::subset(prec, grep(".04", names(prec), fixed=TRUE, value=T))
+prec05 <- raster::subset(prec, grep(".05", names(prec), fixed=TRUE, value=T))
+prec06 <- raster::subset(prec, grep(".06", names(prec), fixed=TRUE, value=T))
+prec07 <- raster::subset(prec, grep(".07", names(prec), fixed=TRUE, value=T))
+prec08 <- raster::subset(prec, grep(".08", names(prec), fixed=TRUE, value=T))
+prec09 <- raster::subset(prec, grep(".09", names(prec), fixed=TRUE, value=T))
+prec10 <- raster::subset(prec, grep(".10", names(prec), fixed=TRUE, value=T))
+prec11 <- raster::subset(prec, grep(".11", names(prec), fixed=TRUE, value=T))
+prec12 <- raster::subset(prec, grep(".12", names(prec), fixed=TRUE, value=T))
+prec12 <- dropLayer(prec12, 10) # 2019 Data should not be considered
+
+prec01mean <- calc(prec01, mean) # calculating mean -> 1 raster layer
+prec02mean <- calc(prec02, mean)
+prec03mean <- calc(prec03, mean)
+prec04mean <- calc(prec04, mean)
+prec05mean <- calc(prec05, mean)
+prec06mean <- calc(prec06, mean)
+prec07mean <- calc(prec07, mean)
+prec08mean <- calc(prec08, mean)
+prec09mean <- calc(prec09, mean)
+prec10mean <- calc(prec10, mean)
+prec11mean <- calc(prec11, mean)
+prec12mean <- calc(prec12, mean)
+
+precmean <- stack(prec01mean, prec02mean, prec03mean, prec04mean, prec05mean, prec06mean, prec07mean, prec08mean, prec09mean, prec10mean, prec11mean, prec12mean)
+
+
+
+predpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors/"
+setwd(predpath)
+writeRaster(precmean, "precmean.tif",format="GTiff", overwrite=TRUE)
+```
+## MINIMUM TEMPERATURE
+
+## Creating subsets for each month 
+```{r}
+tmin01 <- raster::subset(tmin, grep(".01", names(tmin), fixed=TRUE, value=T))
+tmin02 <- raster::subset(tmin, grep(".02", names(tmin), fixed=TRUE, value=T))
+tmin03 <- raster::subset(tmin, grep(".03", names(tmin), fixed=TRUE, value=T))
+tmin04 <- raster::subset(tmin, grep(".04", names(tmin), fixed=TRUE, value=T))
+tmin05 <- raster::subset(tmin, grep(".05", names(tmin), fixed=TRUE, value=T))
+tmin06 <- raster::subset(tmin, grep(".06", names(tmin), fixed=TRUE, value=T))
+tmin07 <- raster::subset(tmin, grep(".07", names(tmin), fixed=TRUE, value=T))
+tmin08 <- raster::subset(tmin, grep(".08", names(tmin), fixed=TRUE, value=T))
+tmin09 <- raster::subset(tmin, grep(".09", names(tmin), fixed=TRUE, value=T))
+tmin10 <- raster::subset(tmin, grep(".10", names(tmin), fixed=TRUE, value=T))
+tmin11 <- raster::subset(tmin, grep(".11", names(tmin), fixed=TRUE, value=T))
+tmin12 <- raster::subset(tmin, grep(".12", names(tmin), fixed=TRUE, value=T))
+tmin12 <- dropLayer(tmin12, 10) # 2019 Data should not be considered
+
+tmin01mean <- calc(tmin01, mean) # calculating mean -> 1 raster layer
+tmin02mean <- calc(tmin02, mean)
+tmin03mean <- calc(tmin03, mean)
+tmin04mean <- calc(tmin04, mean)
+tmin05mean <- calc(tmin05, mean)
+tmin06mean <- calc(tmin06, mean)
+tmin07mean <- calc(tmin07, mean)
+tmin08mean <- calc(tmin08, mean)
+tmin09mean <- calc(tmin09, mean)
+tmin10mean <- calc(tmin10, mean)
+tmin11mean <- calc(tmin11, mean)
+tmin12mean <- calc(tmin12, mean)
+
+tminmean <- stack(tmin01mean, tmin02mean, tmin03mean, tmin04mean, tmin05mean, tmin06mean, tmin07mean, tmin08mean, tmin09mean, tmin10mean, tmin11mean, tmin12mean)
+
+
+
+predpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors/"
+setwd(predpath)
+writeRaster(tminmean, "tminmean.tif",format="GTiff", overwrite=TRUE)
+```
+
+## MAXIMUM TEMPERATURE
+
+## Creating subsets for each month 
+```{r}
+tmax01 <- raster::subset(tmax, grep(".01", names(tmax), fixed=TRUE, value=T))
+tmax02 <- raster::subset(tmax, grep(".02", names(tmax), fixed=TRUE, value=T))
+tmax03 <- raster::subset(tmax, grep(".03", names(tmax), fixed=TRUE, value=T))
+tmax04 <- raster::subset(tmax, grep(".04", names(tmax), fixed=TRUE, value=T))
+tmax05 <- raster::subset(tmax, grep(".05", names(tmax), fixed=TRUE, value=T))
+tmax06 <- raster::subset(tmax, grep(".06", names(tmax), fixed=TRUE, value=T))
+tmax07 <- raster::subset(tmax, grep(".07", names(tmax), fixed=TRUE, value=T))
+tmax08 <- raster::subset(tmax, grep(".08", names(tmax), fixed=TRUE, value=T))
+tmax09 <- raster::subset(tmax, grep(".09", names(tmax), fixed=TRUE, value=T))
+tmax10 <- raster::subset(tmax, grep(".10", names(tmax), fixed=TRUE, value=T))
+tmax11 <- raster::subset(tmax, grep(".11", names(tmax), fixed=TRUE, value=T))
+tmax12 <- raster::subset(tmax, grep(".12", names(tmax), fixed=TRUE, value=T))
+tmax12 <- dropLayer(tmax12, 10) # 2019 Data should not be considered
+
+tmax01mean <- calc(tmax01, mean) # calculating mean -> 1 raster layer
+tmax02mean <- calc(tmax02, mean)
+tmax03mean <- calc(tmax03, mean)
+tmax04mean <- calc(tmax04, mean)
+tmax05mean <- calc(tmax05, mean)
+tmax06mean <- calc(tmax06, mean)
+tmax07mean <- calc(tmax07, mean)
+tmax08mean <- calc(tmax08, mean)
+tmax09mean <- calc(tmax09, mean)
+tmax10mean <- calc(tmax10, mean)
+tmax11mean <- calc(tmax11, mean)
+tmax12mean <- calc(tmax12, mean)
+
+tmaxmean <- stack(tmax01mean, tmax02mean, tmax03mean, tmax04mean, tmax05mean, tmax06mean, tmax07mean, tmax08mean, tmax09mean, tmax10mean, tmax11mean, tmax12mean)
+
+predpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors/"
+setwd(predpath)
+writeRaster(tmaxmean, "tmaxmean.tif",format="GTiff", overwrite=TRUE)
+```
+
+# PREDICTORS STANDARDIZATION AND MERGING #
+```{r}
+rm(list=ls())
+
+library(raster)
+library(dismo)
+library(sf)
+library(mapview)
+```
+## Loading predictors
+```{r}
+gadmpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/GADM_Europa/"
+predpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors/"
+corpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Corine Land Cover/DATA/"
+predfinpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors_finished/"
+elepath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/WorldClim/wc2.1_2.5m_elev/"
+```
+## In ETRS89 umprojizieren
+## WORLDCLIM
+
+## current
+```{r}
+precmean <- stack(paste0(predpath, "precmean.grd"))
+tmaxmean <- stack(paste0(predpath, "tmaxmean.grd"))
+tminmean <- stack(paste0(predpath, "tminmean.grd"))
+
+
+precmeanETRS <- projectRaster(precmean, crs="+init=epsg:3035")
+tmaxmeanETRS <- projectRaster(tmaxmean, crs="+init=epsg:3035")
+tminmeanETRS <- projectRaster(tminmean, crs="+init=epsg:3035")
+
+setwd(predpath)
+writeRaster(precmeanETRS, "precmeanETRS.grd", overwrite=TRUE)
+writeRaster(tmaxmeanETRS, "tmaxmeanETRS.grd", overwrite=TRUE)
+writeRaster(tminmeanETRS, "tminmeanETRS.grd", overwrite=TRUE)
+
+climmeanETRS <- raster::stack(precmeanETRS, tmaxmeanETRS, tminmeanETRS)
+
+setwd(predpath)
+writeRaster(climmeanETRS, "climmeanETRS.grd", overwrite=TRUE)
+```
+## CORINE LAND COVER
+```{r}
+cor <- raster(paste0(corpath, "U2018_CLC2018_V2020_20u1.tif"))
+```
+## Creating Rastertemplate
+```{r}
+precmeanETRS <- stack(paste0(predpath, "precmeanETRS.grd"))
+tmaxmeanETRS <- stack(paste0(predpath, "tmaxmeanETRS.grd"))
+tminmeanETRS <- stack(paste0(predpath, "tminmeanETRS.grd"))
+
+climmeanETRS <- raster::stack(paste0(predpath, "climmeanETRS.grd"))
+
+rastemplate <- raster(ext = extent(cor), crs = crs(cor), resolution = c(10000, 10000))
+```
+## Cropping
+```{r}
+precmeancrop <- crop(precmeanETRS, cor)
+tmaxmeancrop <- crop(tmaxmeanETRS, cor)
+tminmeancrop <- crop(tminmeanETRS, cor)
+```
+## Resampling
+```{r}
+precmeanfin <- resample(precmeancrop, rastemplate)
+tmaxmeanfin <- resample(tmaxmeancrop, rastemplate)
+tminmeanfin <- resample(tminmeancrop, rastemplate)
+
+climmeanfin <- raster::stack(precmeanfin, tmaxmeanfin, tminmeanfin)
+
+setwd(predfinpath)
+writeRaster(climmeanfin, "climmeanfin.grd", overwrite=TRUE)
+```
+## future
+```{r}
+library(raster)
+library(dismo)
+library(sf)
+library(mapview)
+```
+## Loading predictors
+```{r}
+gadmpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/GADM_Europa/"
+predpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors/"
+corpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Corine Land Cover/DATA/"
+predfinpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors_finished/"
+
+Prec245 <- stack(paste0(predpath, "Prec245.grd"))
+Prec370 <- stack(paste0(predpath, "Prec370.grd"))
+Tmax245 <- stack(paste0(predpath, "Tmax245.grd"))
+Tmax370 <- stack(paste0(predpath, "Tmax370.grd"))
+Tmin245 <- stack(paste0(predpath, "Tmin245.grd"))
+Tmin370 <- stack(paste0(predpath, "Tmin370.grd"))
+```
+## rastertemplate
+```{r}
+climmean <- stack(paste0(predfinpath, "climmeanfin.grd"))
+
+precmean <- stack(paste0(predpath, "precmean.grd"))
+
+rastemplate <- projectRaster(climmean, crs=crs(precmean))
+```
+## crop
+```{r}
+Prec245crop <- crop(Prec245, rastemplate)
+Prec370crop <- crop(Prec370, rastemplate)
+Tmax245crop <- crop(Tmax245, rastemplate)
+Tmax370crop <- crop(Tmax370, rastemplate)
+Tmin245crop <- crop(Tmin245, rastemplate)
+Tmin370crop <- crop(Tmin370, rastemplate)
+```
+## project
+```{r}
+Prec245ETRS <- projectRaster(Prec245crop, crs="+init=epsg:3035")
+Prec370ETRS <- projectRaster(Prec370crop, crs="+init=epsg:3035")
+Tmax245ETRS <- projectRaster(Tmax245crop, crs="+init=epsg:3035")
+Tmax370ETRS <- projectRaster(Tmax370crop, crs="+init=epsg:3035")
+Tmin245ETRS <- projectRaster(Tmin245crop, crs="+init=epsg:3035")
+Tmin370ETRS <- projectRaster(Tmin370crop, crs="+init=epsg:3035")
+
+setwd(predpath)
+writeRaster(Prec245ETRS, "Prec245ETRS.grd", overwrite=TRUE)
+writeRaster(Prec370ETRS, "Prec370ETRS.grd", overwrite=TRUE)
+writeRaster(Tmax245ETRS, "Tmax245ETRS.grd", overwrite=TRUE)
+writeRaster(Tmax370ETRS, "Tmax370ETRS.grd", overwrite=TRUE)
+writeRaster(Tmin245ETRS, "Tmin245ETRS.grd", overwrite=TRUE)
+writeRaster(Tmin370ETRS, "Tmin370ETRS.grd", overwrite=TRUE)
+
+futureclimETRS <- raster::stack(Prec245ETRS, Prec370ETRS, Tmax245ETRS, Tmax370ETRS, Tmin245ETRS, Tmin370ETRS)
+
+writeRaster(futureclimETRS, "futureclimETRS.grd", overwrite=TRUE)
+```
+## resample
+```{r}
+Prec245fin <- resample(Prec245ETRS, climmean)
+Prec370fin <- resample(Prec370ETRS, climmean)
+Tmax245fin <- resample(Tmax245ETRS, climmean)
+Tmax370fin <- resample(Tmax370ETRS, climmean)
+Tmin245fin <- resample(Tmin245ETRS, climmean)
+Tmin370fin <- resample(Tmin370ETRS, climmean)
+
+futureclim245 <- raster::stack(Prec245fin, Tmax245fin, Tmin245fin)
+futureclim370 <- raster::stack(Prec370fin, Tmax370fin, Tmin370fin)
+
+setwd(predfinpath)
+writeRaster(futureclim245, "futureclim245.grd", overwrite=TRUE)
+writeRaster(futureclim370, "futureclim370.grd", overwrite=TRUE)
+```
+## RESAMPLE CORINE LAND COVER
+```{r}
+cor10km <- aggregate(cor, fact=100, fun=modal) # this is necessary because its a categorical variable
+
+corfin <- resample(cor10km, climmean, method="ngb")
+
+setwd(predfinpath)
+writeRaster(corfin, "corfin.grd", overwrite=TRUE)
+
+## categorical resampling:
+# http://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=E54988E2300738F35AFC8DEE2E261B32?doi=10.1.1.139.9293&rep=rep1&type=pdf
+```
+## Resample Elevation
+```{r}
+ele <- raster(paste0(elepath, "wc2.1_2.5m_elev.tif"))
+
+elecrop <- crop(ele, rastemplate)
+
+eleETRS <- projectRaster(elecrop, crs="+init=epsg:3035")
+
+elefin <- resample(eleETRS, climmean)
+
+setwd(predfinpath)
+writeRaster(elefin, "elevation.grd", overwrite=TRUE)
+```
+## Merging all the predictors
+```{r}
+predfinpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors_finished/"
+
+futureclim245 <- raster::stack(paste0(predfinpath, "futureclim245.grd"))
+futureclim370 <- raster::stack(paste0(predfinpath, "futureclim370.grd"))
+corfin <- raster(paste0(predfinpath, "corfin.grd"))
+elefin <- raster(paste0(predfinpath, "elevation.grd"))
+
+currentclimstack <- raster::stack(climmean, corfin, elefin)
+futureclim245stack <- raster::stack(futureclim245, corfin, elefin)
+futureclim370stack <- raster::stack(futureclim370, corfin, elefin)
+
+setwd(predfinpath)
+writeRaster(currentclimstack, "currentclimstack.grd", overwrite=TRUE)
+writeRaster(futureclim245stack, "futureclim245stack.grd", overwrite=TRUE)
+writeRaster(futureclim370stack, "futureclim370stack.grd", overwrite=TRUE)
+```
+## Mask predictors to GADM
+```{r}
+predfinpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors_finished/"
+gadmpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/GADM_Europa/"
+
+currentclimstack <- raster::stack(paste0(predfinpath, "currentclimstack.grd"))
+futureclim245stack <- raster::stack(paste0(predfinpath, "futureclim245stack.grd"))
+futureclim370stack <- raster::stack(paste0(predfinpath, "futureclim370stack.grd"))
+
+eugadm<- st_read(paste0(gadmpath, "Europe.shp")) # Quelle siehe "Readme", https://tapiquen-sig.jimdofree.com/english-version/free-downloads/europe/
+
+eugadmgrs <- st_transform(eugadm, crs(currentclimstack))
+
+currentclimstackeu <- mask(currentclimstack, eugadmgrs)
+futureclim245stackeu <- mask(futureclim245stack, eugadmgrs)
+futureclim370stackeu <- mask(futureclim370stack, eugadmgrs)
+
+setwd(predfinpath)
+writeRaster(currentclimstackeu, "currentclimstack.grd", overwrite=TRUE)
+writeRaster(futureclim245stackeu, "futureclim245stack.grd", overwrite=TRUE)
+writeRaster(futureclim370stackeu, "futureclim370stack.grd", overwrite=TRUE)
+
+```
+# MODEL TRAINING, PREDICTIONS AND NORTHERLY SHIFT #
+```{r}
+rm(list=ls())
+
+library(raster)
+library(dismo)
+library(rJava)
+library(sf)
+library(sp)
+library(mapview)
+
+predfinpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors_finished/"
+abundancepath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Abundance_data/"
+modelpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Models/"
+```
+## LOAD DATA
+```{r}
+ww <- readRDS(paste0(abundancepath, "wwfin.RDS"))
+
+currentclimstack <- raster::stack(paste0(predfinpath, "currentclimstack.grd"))
+futureclim245stack <- raster::stack(paste0(predfinpath, "futureclim245stack.grd"))
+futureclim370stack <- raster::stack(paste0(predfinpath, "futureclim370stack.grd"))
+```
+## MODEL TRAINING
+## Create background points
+```{r}
+# install.packages("blockCV", dependencies=TRUE)
+# remotes::install_github("rvalavi/blockCV", dependencies=TRUE)
+library(maxnet)
+library(precrec)
+library(blockCV)
+
+mask <- currentclimstack$Prec.1
+# select 10000 random points
+# set seed to assure that the examples will always
+# have the same random sample
+set.seed(1963)
+
+bg <- randomPoints(mask, 10000, p = ww)
+
+bgframe <- data.frame(bg)
+
+gadmpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/GADM_Europa/"
+
+eugadm<- st_read(paste0(gadmpath, "Europe.shp")) # Quelle siehe "Readme", https://tapiquen-sig.jimdofree.com/english-version/free-downloads/europe/
+eugadmgrs <- st_transform(eugadm, crs(currentclimstack))
+
+plot(eugadmgrs$geometry, main = "Presence data of phylloscopus trochilus")
+points(ww)
+
+plot(eugadmgrs$geometry, main = "Randomly sampled background points")
+points(bgframe)
+
+sdm <- maxent(currentclimstack, p = ww, a = bgframe, factors=37, removeDuplicates=TRUE)
+
+setwd(modelpath)
+
+saveRDS(sdm, "maxent.RDS")
+```
+## PREDICTION
+```{r}
+sdm <- readRDS(paste0(modelpath, "maxent.RDS"))
+sdmcurrent <- predict(sdm, currentclimstack)
+
+plot(sdmcurrent, main = "Willow warbler predicted current distribution", xlab = "Easting", ylab="Northing", sub = "The color scheme represents the distribution probability")
+
+sdm245 <- predict(sdm, futureclim245stack)
+sdm370 <- predict(sdm, futureclim370stack)
+
+plot(sdm245, main = "Willow warbler predicted distribution for the years 2041-2060 (ssp245)", xlab="Easting", ylab="Northing", sub = "The color scheme represents the distribution probability")
+plot(sdm370, main = "Willow warbler predicted distribution for the years 2041-2060 (ssp370)", xlab="Easting", ylab="Northing", sub = "The color scheme represents the distribution probability")
+
+par(mfrow=c(1,2))
+```
+## Shift in willow warbler distribution
+```{r}
+library(rgdal)
+```
+## Current climate
+```{r}
+par(mfrow=c(2,1))
+
+abundprobcurrent <- as.vector(sdmcurrent$layer)
+currentframe <- data.frame(abundprobcurrent)
+
+currentframe$northing <- coordinates(sdmcurrent)[,2]
+
+plot(currentframe$abundprobcurrent ~ currentframe$northing, type="h" ,main = "Willow warbler North-South distribution in the examined region - current climate", xlab="Northing", ylab="Distribution probability")
+```
+## Future climate
+```{r}
+abundprobfuture <- as.vector(sdm245$layer)
+futureframe <- data.frame(abundprobfuture)
+
+futureframe$northing <- coordinates(sdm245)[,2]
+
+plot(futureframe$abundprobfuture ~ futureframe$northing, type="h",main = "Willow warbler North-South distribution in the examined region - future climate", xlab="Northing", ylab="Distribution probability")
+```
+
+### https://cran.r-project.org/web/packages/blockCV/vignettes/BlockCV_for_SDM.html
+
+# BLOCK-CROSS VALIDATION #
+```{r}
+rm(list=ls())
+
+library(raster)
+library(dismo)
+library(rJava)
+library(sf)
+library(sp)
+library(mapview)
+library(caret)
+library(SDMtune)
+
+predfinpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Predictors_finished/"
+abundancepath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Abundance_data/"
+modelpath <- "E:/Landschaftsökologie_Master/Module/M8a_Fernerkundung_und_raeumliche_Modellierung/Projekt_SDM/Data/Models/"
+```
+## LOAD DATA
+```{r}
+ww <- readRDS(paste0(abundancepath, "wwfin.RDS"))
+
+currentclimstack <- raster::stack(paste0(predfinpath, "currentclimstack.grd"))
+```
+## Create background points
+```{r}
+library(maxnet)
+library(precrec)
+library(blockCV)
+# install.packages("blockCV", dependencies=TRUE)
+# remotes::install_github("rvalavi/blockCV", dependencies=TRUE)
+
+mask <- currentclimstack$Prec.1
+# select 10000 random points
+# set seed to assure that the examples will always
+# have the same random sample.
+set.seed(1963)
+
+bg <- randomPoints(mask, 10000, p = ww)
+
+bgframe <- data.frame(bg)
+
+bgframe$ABUNDANCE <- 0
+ww$ABUNDANCE <- 1
+
+names(bgframe) <- c("LONGITUDE", "LATITUDE", "ABUNDANCE")
+wwframe <- rbind(ww, bgframe)
+
+coordinates(wwframe)=~LONGITUDE+LATITUDE
+proj4string(wwframe) <- CRS("+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000
++y_0=3210000 +ellps=GRS80 +units=m +no_defs")
+
+wwframecrop <- crop(wwframe, currentclimstack) # remove outliers
+```
+## create spatial blocks
+```{r}
+sb <- blockCV::spatialBlock(speciesData=wwframecrop,
+                   species="ABUNDANCE",
+                   rasterLayer = currentclimstack,
+                   rows= 4,
+                   cols= 10,
+                   k = 5,
+                   selection = "systematic")
+```
+## extract the raster values for the species points as a dataframe
+```{r}
+mydata <- raster::extract(currentclimstack, wwframecrop, na.rm=TRUE)
+mydata <- as.data.frame(mydata)
+
+wwlogical <- wwframecrop$ABUNDANCE
+
+folds <- sb$foldID
+```
+## create an empty vector to store the AUC of each fold
+```{r}
+AUCs <- vector(mode = "numeric")
+for(i in seq_len(38)){
+  mydata[i][is.na(mydata[i])] <- 0
+}
+for(k in seq_len(5)){
+  # extracting the training and testing indices
+  # this way only works with foldID
+  trainSet <- which(folds != k) # training set indices
+  testSet <- which(folds == k) # testing set indices
+  # fitting a maxent model using linear, quadratic and hinge features
+  mx <- maxnet(p = wwlogical[trainSet], 
+               data = mydata[trainSet, ], 
+               maxnet.formula(p = wwlogical[trainSet], 
+                              data = mydata[trainSet, ], 
+                              classes = "default"))
+  testTable <- wwframecrop[testSet, ] # a table for testing predictions and reference data
+  testTable$pred <- predict(mx, mydata[testSet, ], type = "cloglog") # predict the test set
+  # calculate area under the ROC curve
+  # precrec_obj <- evalmod(scores = testTable$pred, labels = testTable$ABUNDANCE)
+  # AUCs[k] <- auc(precrec_obj)[1,4] # extract AUC-ROC
+}
+
+# print(mean(AUCs))
+```
